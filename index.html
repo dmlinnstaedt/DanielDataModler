@@ -134,7 +134,16 @@ svg.connectors text.hl{fill:var(--accent-blue);}
 #title-bar{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;}
 #title-bar h1{font-size:15px;font-weight:700;letter-spacing:-0.03em;}
 #title-bar .sub{font-size:11px;color:var(--text-muted);font-family:var(--mono);margin-top:2px;}
-#legend-bar{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;display:flex;flex-direction:column;gap:4px;}
+#legend-bar{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;display:flex;flex-direction:column;gap:4px;transition:all .25s ease;}
+#legend-bar.collapsed{padding:6px 14px;gap:0;}
+#legend-bar.collapsed .leg-content{max-height:0;overflow:hidden;opacity:0;margin:0;}
+.leg-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;}
+.leg-header span{font-size:11px;color:var(--text-dim);font-family:var(--mono);}
+.leg-toggle{width:18px;height:18px;display:flex;align-items:center;justify-content:center;border-radius:4px;transition:background .1s;}
+.leg-toggle:hover{background:var(--border);}
+.leg-toggle svg{width:10px;height:10px;color:var(--text-dim);transition:transform .25s;}
+#legend-bar.collapsed .leg-toggle svg{transform:rotate(180deg);}
+.leg-content{max-height:200px;overflow:hidden;opacity:1;transition:max-height .25s ease,opacity .2s ease;display:flex;flex-direction:column;gap:4px;}
 .leg-row{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-muted);}
 .leg-row .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 #badge-legend{margin-top:4px;padding-top:6px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;}
@@ -171,16 +180,22 @@ svg.connectors text.hl{fill:var(--accent-blue);}
     <div class="sub">acp_edw.mbr · drag tables · right-click for options</div>
   </div>
   <div id="legend-bar">
-    <div class="leg-row"><div class="dot" style="background:var(--accent-purple)"></div>Identity hub</div>
-    <div class="leg-row"><div class="dot" style="background:var(--accent-teal)"></div>Person identifiers</div>
-    <div class="leg-row"><div class="dot" style="background:var(--accent-blue)"></div>Coverage &amp; contracts</div>
-    <div class="leg-row"><div class="dot" style="background:var(--accent-coral)"></div>Contact information</div>
-    <div class="leg-row"><div class="dot" style="background:var(--accent-gray)"></div>Employment &amp; general</div>
-    <div id="badge-legend">
-      <span><span class="badge badge-pk">PK</span></span>
-      <span><span class="badge badge-fk">FK</span></span>
-      <span><span class="badge badge-dk">DK</span></span>
-      <span><span class="badge badge-sk">SK</span></span>
+    <div class="leg-header" onclick="document.getElementById('legend-bar').classList.toggle('collapsed')">
+      <span>Legend</span>
+      <div class="leg-toggle"><svg viewBox="0 0 12 12"><path d="M3 8.5l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+    </div>
+    <div class="leg-content">
+      <div class="leg-row"><div class="dot" style="background:var(--accent-purple)"></div>Identity hub</div>
+      <div class="leg-row"><div class="dot" style="background:var(--accent-teal)"></div>Person identifiers</div>
+      <div class="leg-row"><div class="dot" style="background:var(--accent-blue)"></div>Coverage &amp; contracts</div>
+      <div class="leg-row"><div class="dot" style="background:var(--accent-coral)"></div>Contact information</div>
+      <div class="leg-row"><div class="dot" style="background:var(--accent-gray)"></div>Employment &amp; general</div>
+      <div id="badge-legend">
+        <span><span class="badge badge-pk">PK</span></span>
+        <span><span class="badge badge-fk">FK</span></span>
+        <span><span class="badge badge-dk">DK</span></span>
+        <span><span class="badge badge-sk">SK</span></span>
+      </div>
     </div>
   </div>
 </div>
@@ -191,6 +206,7 @@ svg.connectors text.hl{fill:var(--accent-blue);}
   <button onclick="resetView()" title="Fit all">⊡</button>
   <button onclick="toggleAllCards()" title="Expand/collapse all">↕</button>
   <button onclick="exportJSON()" title="Export JSON">⬇</button>
+  <button onclick="resetModel()" title="Reset to default model" style="font-size:12px">↺</button>
 </div>
 
 <div id="minimap"><canvas id="minicanvas"></canvas></div>
@@ -204,7 +220,7 @@ svg.connectors text.hl{fill:var(--accent-blue);}
 
 <script>
 // ── DATA MODEL ──
-const MODEL = {
+const DEFAULT_MODEL = {
   tables: [
     { id:'mbr_unique_prs', color:'--accent-purple', cat:'hub', x:620, y:380, sortkey:'person_id',
       columns:[
@@ -361,6 +377,34 @@ const MODEL = {
     {from:'mbr_ctrct_v3',to:'mbr_covrg_v3',col:'covrg_id',card:'1:N'},
   ]
 };
+
+// ── PERSISTENCE ──
+const STORAGE_KEY = 'mbr_data_model_v1';
+function saveModel() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(MODEL)); } catch(e) {} }
+function loadModel() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch(e) {}
+  return null;
+}
+let MODEL = loadModel() || JSON.parse(JSON.stringify(DEFAULT_MODEL));
+
+function resetModel() {
+  const ov = showModal(`
+    <h3>Reset to default?</h3>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:8px;">This will discard all your edits and restore the original model. This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal(this)">Cancel</button>
+      <button class="btn btn-danger" onclick="doResetModel(this)">Reset</button>
+    </div>
+  `);
+}
+function doResetModel(btn) {
+  localStorage.removeItem(STORAGE_KEY);
+  closeModal(btn);
+  location.reload();
+}
 
 const world = document.getElementById('world');
 const svgConn = document.getElementById('svg-conn');
@@ -580,6 +624,7 @@ function doAddColumn(tblId, btn) {
   rebuildCardHTML(cardEls[tblId], tbl);
   closeModal(btn);
   setTimeout(drawConnectors, 50);
+  saveModel();
   toast(`Added ${name} to ${tblId}`);
 }
 
@@ -616,6 +661,7 @@ function doEditColumn(tblId, ci, btn) {
   rebuildCardHTML(cardEls[tblId], tbl);
   closeModal(btn);
   setTimeout(drawConnectors, 50);
+  saveModel();
   toast(`Updated ${col.name}`);
 }
 
@@ -639,6 +685,7 @@ function doDeleteColumn(tblId, ci, btn) {
   rebuildCardHTML(cardEls[tblId], tbl);
   closeModal(btn);
   setTimeout(drawConnectors, 50);
+  saveModel();
   toast(`Removed ${name}`);
 }
 
@@ -651,6 +698,7 @@ function moveColumn(tblId, ci, dir) {
   tbl.columns[ni] = tmp;
   rebuildCardHTML(cardEls[tblId], tbl);
   setTimeout(drawConnectors, 50);
+  saveModel();
   toast(`Moved ${tmp.name} ${dir < 0 ? 'up' : 'down'}`);
 }
 
@@ -690,6 +738,7 @@ function duplicateTable(id) {
   MODEL.tables.push(dup);
   renderCard(dup);
   setTimeout(drawConnectors, 50);
+  saveModel();
   toast(`Duplicated ${id}`);
 }
 function deleteTable(id) {
@@ -709,6 +758,7 @@ function doDeleteTable(id, btn) {
   delete cardEls[id];
   closeModal(btn);
   drawConnectors();
+  saveModel();
   toast(`Deleted ${id}`);
 }
 
@@ -743,7 +793,7 @@ window.addEventListener('mousemove', e => {
   applyTransform();
 });
 window.addEventListener('mouseup', () => {
-  if (dragCard) { dragCard.el.classList.remove('dragging'); dragCard = null; }
+  if (dragCard) { dragCard.el.classList.remove('dragging'); saveModel(); dragCard = null; }
   panning = false;
   canvasEl.classList.remove('panning');
 });
