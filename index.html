@@ -402,8 +402,8 @@ function renderCard(tbl) {
     if (e.button !== 0) return;
     e.stopPropagation();
     dragCard = { el, tbl };
-    dragOX = e.clientX / scale - tbl.x;
-    dragOY = e.clientY / scale - tbl.y;
+    dragOX = (e.clientX - panX) / scale - tbl.x;
+    dragOY = (e.clientY - panY) / scale - tbl.y;
     el.classList.add('dragging');
   });
 
@@ -465,8 +465,8 @@ function rebuildCardHTML(el, tbl) {
     if (e.button !== 0) return;
     e.stopPropagation();
     dragCard = { el, tbl };
-    dragOX = e.clientX / scale - tbl.x;
-    dragOY = e.clientY / scale - tbl.y;
+    dragOX = (e.clientX - panX) / scale - tbl.x;
+    dragOY = (e.clientY - panY) / scale - tbl.y;
     el.classList.add('dragging');
   });
   el.addEventListener('contextmenu', e => {
@@ -727,8 +727,8 @@ canvasEl.addEventListener('mousedown', e => {
 });
 window.addEventListener('mousemove', e => {
   if (dragCard) {
-    const nx = e.clientX/scale - dragOX - panX/scale;
-    const ny = e.clientY/scale - dragOY - panY/scale;
+    const nx = (e.clientX - panX) / scale - dragOX;
+    const ny = (e.clientY - panY) / scale - dragOY;
     dragCard.tbl.x = Math.round(nx/10)*10;
     dragCard.tbl.y = Math.round(ny/10)*10;
     dragCard.el.style.left = dragCard.tbl.x+'px';
