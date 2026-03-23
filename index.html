@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MBR Data Model Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0c0e13;
+  --bg-dots: #161920;
+  --bg-card: #14171e;
+  --bg-card-hover: #191d26;
+  --bg-input: #0f1118;
+  --border: #252a35;
+  --border-hover: #3a4155;
+  --border-focus: #5b9aff;
+  --border-drag: #5b9aff;
+  --text: #d8dce6;
+  --text-muted: #7a8194;
+  --text-dim: #454d60;
+  --accent-purple: #a78bfa;
+  --accent-purple-bg: rgba(167,139,250,0.1);
+  --accent-teal: #34d399;
+  --accent-teal-bg: rgba(52,211,153,0.1);
+  --accent-blue: #5b9aff;
+  --accent-blue-bg: rgba(91,154,255,0.1);
+  --accent-coral: #fb7185;
+  --accent-coral-bg: rgba(251,113,133,0.1);
+  --accent-gray: #7a8194;
+  --accent-gray-bg: rgba(122,129,148,0.08);
+  --accent-amber: #fbbf24;
+  --accent-amber-bg: rgba(251,191,36,0.1);
+  --accent-red: #ef4444;
+  --accent-green: #22c55e;
+  --font: 'DM Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.35);
+  --shadow-drag: 0 8px 40px rgba(91,154,255,0.15);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);overflow:hidden;height:100vh;width:100vw;}
+::selection{background:var(--accent-blue);color:#fff;}
+input,select,button{font-family:inherit;}
+
+#canvas{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden;cursor:grab;}
+#canvas.panning{cursor:grabbing;}
+
+#grid-bg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;}
+
+#world{position:absolute;transform-origin:0 0;will-change:transform;}
+
+svg.connectors{position:absolute;top:0;left:0;pointer-events:none;overflow:visible;width:1px;height:1px;}
+svg.connectors path{fill:none;stroke:var(--border);stroke-width:1.5;transition:stroke .15s,stroke-width .15s;}
+svg.connectors path.hl{stroke:var(--accent-blue);stroke-width:2.2;}
+svg.connectors circle{transition:fill .15s;}
+svg.connectors circle.hl{fill:var(--accent-blue)!important;}
+svg.connectors text{font-family:var(--mono);font-size:10px;fill:var(--text-dim);pointer-events:none;transition:fill .15s;}
+svg.connectors text.hl{fill:var(--accent-blue);}
+
+/* TABLE CARDS */
+.tbl{position:absolute;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);min-width:240px;max-width:300px;box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s;z-index:1;user-select:none;}
+.tbl.dragging{border-color:var(--border-drag);box-shadow:var(--shadow-drag);z-index:100;opacity:.92;}
+.tbl.hl{border-color:var(--accent-blue);box-shadow:0 0 0 1px var(--accent-blue),var(--shadow);}
+
+.tbl-head{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:grab;border-bottom:1px solid var(--border);border-radius:var(--radius) var(--radius) 0 0;transition:background .15s;}
+.tbl-head:hover{background:var(--bg-card-hover);}
+.tbl-head .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.tbl-head .name{font-family:var(--mono);font-size:13px;font-weight:600;flex:1;letter-spacing:-0.02em;}
+.tbl-head .cnt{font-size:11px;color:var(--text-dim);font-family:var(--mono);}
+
+.tbl-body{max-height:0;overflow:hidden;transition:max-height .3s ease;}
+.tbl.open .tbl-body{max-height:900px;}
+
+.col-row{display:flex;align-items:center;gap:6px;padding:4px 12px;font-size:12px;font-family:var(--mono);transition:background .1s;position:relative;}
+.col-row:hover{background:var(--bg-card-hover);}
+.col-row .c-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.col-row .c-type{color:var(--text-dim);font-size:11px;flex-shrink:0;}
+.col-row .badges{display:flex;gap:3px;flex-shrink:0;}
+.badge{font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;letter-spacing:.06em;text-transform:uppercase;}
+.badge-pk{background:var(--accent-purple-bg);color:var(--accent-purple);}
+.badge-fk{background:var(--accent-teal-bg);color:var(--accent-teal);}
+.badge-dk{background:var(--accent-amber-bg);color:var(--accent-amber);}
+.badge-sk{background:var(--accent-blue-bg);color:var(--accent-blue);}
+
+.col-row .col-actions{display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);gap:2px;}
+.col-row:hover .col-actions{display:flex;}
+.col-act-btn{width:20px;height:20px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .1s;}
+.col-act-btn:hover{background:var(--border);color:var(--text);}
+.col-act-btn.del:hover{background:rgba(239,68,68,.15);color:var(--accent-red);}
+.col-act-btn.move{font-size:10px;}
+.col-act-btn.move:hover{background:var(--accent-blue-bg);color:var(--accent-blue);}
+
+.tbl-foot{display:flex;border-top:1px solid var(--border);}
+.tbl-foot-btn{flex:1;padding:6px;text-align:center;font-size:11px;color:var(--text-dim);cursor:pointer;transition:all .12s;border:none;background:transparent;font-family:var(--font);}
+.tbl-foot-btn:hover{background:var(--bg-card-hover);color:var(--text-muted);}
+.tbl-foot-btn:first-child{border-radius:0 0 0 var(--radius);}
+.tbl-foot-btn:last-child{border-radius:0 0 var(--radius) 0;}
+.tbl-foot-btn+.tbl-foot-btn{border-left:1px solid var(--border);}
+.tbl-foot-btn svg{width:12px;height:12px;vertical-align:-2px;margin-right:3px;}
+
+/* EXPAND CHEVRON */
+.expand-chev{width:20px;height:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:4px;transition:background .1s;flex-shrink:0;}
+.expand-chev:hover{background:var(--border);}
+.expand-chev svg{width:12px;height:12px;transition:transform .25s;color:var(--text-dim);}
+.tbl.open .expand-chev svg{transform:rotate(180deg);}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);animation:fadeIn .15s;}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px 24px;min-width:340px;max-width:420px;box-shadow:0 12px 48px rgba(0,0,0,.5);animation:slideUp .2s ease-out;}
+@keyframes slideUp{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal h3{font-size:15px;font-weight:600;margin-bottom:14px;letter-spacing:-0.02em;}
+.modal label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;margin-top:10px;}
+.modal input,.modal select{width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:13px;outline:none;transition:border-color .15s;}
+.modal input:focus,.modal select:focus{border-color:var(--border-focus);}
+.modal select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%237a8194'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;}
+.modal-actions{display:flex;gap:8px;margin-top:18px;justify-content:flex-end;}
+.btn{padding:7px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;transition:all .12s;border:1px solid var(--border);}
+.btn-ghost{background:transparent;color:var(--text-muted);}
+.btn-ghost:hover{background:var(--border);color:var(--text);}
+.btn-primary{background:var(--accent-blue);border-color:var(--accent-blue);color:#fff;}
+.btn-primary:hover{filter:brightness(1.1);}
+.btn-danger{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.25);color:var(--accent-red);}
+.btn-danger:hover{background:rgba(239,68,68,.2);}
+.checkbox-row{display:flex;align-items:center;gap:8px;margin-top:10px;}
+.checkbox-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent-blue);}
+.checkbox-row label{margin:0;cursor:pointer;}
+
+/* TOOLBAR */
+#toolbar{position:fixed;top:14px;left:14px;z-index:200;display:flex;flex-direction:column;gap:8px;}
+#title-bar{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;}
+#title-bar h1{font-size:15px;font-weight:700;letter-spacing:-0.03em;}
+#title-bar .sub{font-size:11px;color:var(--text-muted);font-family:var(--mono);margin-top:2px;}
+#legend-bar{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;display:flex;flex-direction:column;gap:4px;}
+.leg-row{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-muted);}
+.leg-row .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+#badge-legend{margin-top:4px;padding-top:6px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;}
+
+/* CONTROLS */
+#controls{position:fixed;bottom:14px;right:14px;z-index:200;display:flex;gap:5px;}
+#controls button{width:34px;height:34px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all .12s;font-family:var(--font);}
+#controls button:hover{border-color:var(--border-focus);color:var(--text);}
+
+/* MINIMAP */
+#minimap{position:fixed;bottom:14px;left:14px;z-index:200;width:170px;height:110px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+#minimap canvas{width:100%;height:100%;}
+
+/* TOAST */
+.toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:13px;color:var(--text-muted);z-index:300;animation:toastIn .25s ease-out;pointer-events:none;white-space:nowrap;}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.toast.out{animation:toastOut .2s ease-in forwards;}
+@keyframes toastOut{to{opacity:0;transform:translateX(-50%) translateY(8px)}}
+
+/* CONTEXT MENU */
+.ctx-menu{position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:4px 0;min-width:160px;box-shadow:0 8px 32px rgba(0,0,0,.45);z-index:500;animation:fadeIn .1s;}
+.ctx-item{padding:7px 14px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s;color:var(--text-muted);}
+.ctx-item:hover{background:var(--bg-card-hover);color:var(--text);}
+.ctx-item.danger{color:var(--accent-red);}
+.ctx-item.danger:hover{background:rgba(239,68,68,.1);}
+.ctx-sep{height:1px;background:var(--border);margin:4px 0;}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div id="title-bar">
+    <h1>MBR Data Model Editor</h1>
+    <div class="sub">acp_edw.mbr · drag tables · right-click for options</div>
+  </div>
+  <div id="legend-bar">
+    <div class="leg-row"><div class="dot" style="background:var(--accent-purple)"></div>Identity hub</div>
+    <div class="leg-row"><div class="dot" style="background:var(--accent-teal)"></div>Person identifiers</div>
+    <div class="leg-row"><div class="dot" style="background:var(--accent-blue)"></div>Coverage &amp; contracts</div>
+    <div class="leg-row"><div class="dot" style="background:var(--accent-coral)"></div>Contact information</div>
+    <div class="leg-row"><div class="dot" style="background:var(--accent-gray)"></div>Employment &amp; general</div>
+    <div id="badge-legend">
+      <span><span class="badge badge-pk">PK</span></span>
+      <span><span class="badge badge-fk">FK</span></span>
+      <span><span class="badge badge-dk">DK</span></span>
+      <span><span class="badge badge-sk">SK</span></span>
+    </div>
+  </div>
+</div>
+
+<div id="controls">
+  <button onclick="zoomBy(1.2)" title="Zoom in">+</button>
+  <button onclick="zoomBy(0.83)" title="Zoom out">−</button>
+  <button onclick="resetView()" title="Fit all">⊡</button>
+  <button onclick="toggleAllCards()" title="Expand/collapse all">↕</button>
+  <button onclick="exportJSON()" title="Export JSON">⬇</button>
+</div>
+
+<div id="minimap"><canvas id="minicanvas"></canvas></div>
+
+<div id="canvas">
+  <canvas id="grid-bg"></canvas>
+  <div id="world">
+    <svg class="connectors" id="svg-conn"></svg>
+  </div>
+</div>
+
+<script>
+// ── DATA MODEL ──
+const MODEL = {
+  tables: [
+    { id:'mbr_unique_prs', color:'--accent-purple', cat:'hub', x:620, y:380, sortkey:'person_id',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:true,fk:false,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'ssn',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'sub_ssn',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_person', color:'--accent-teal', cat:'identifier', x:200, y:30, sortkey:'person_id',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'firstname',type:'varchar(500)',pk:false,fk:false,dk:false},
+        {name:'middlename',type:'varchar(500)',pk:false,fk:false,dk:false},
+        {name:'lastname',type:'varchar(500)',pk:false,fk:false,dk:false},
+        {name:'nameprefix',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'namesuffix',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'birthdate',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'gender',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_pi_memid', color:'--accent-teal', cat:'identifier', x:560, y:30, sortkey:'person_id',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'memid',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'data_source_system_cd',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_pi_dpid', color:'--accent-teal', cat:'identifier', x:920, y:30, sortkey:null,
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'dpid',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_ctrct_v3', color:'--accent-blue', cat:'coverage', x:1080, y:230, sortkey:'person_id',
+      columns:[
+        {name:'contract_id',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'covrg_id',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'ctrct_type_cd',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'ctrct_subtype_cd',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'ctrct_start_dtm',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'ctrct_end_dtm',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'active_flg',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'ctrct_period',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'grace_period',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_covrg_v3', color:'--accent-blue', cat:'coverage', x:1080, y:560, sortkey:'person_id',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'pln_nm',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'carrier_id',type:'varchar(70)',pk:false,fk:false,dk:false},
+        {name:'covrg_start_dtm',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'covrg_end_dtm',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'bc_memid',type:'varchar(70)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_adr', color:'--accent-coral', cat:'contact', x:80, y:340, sortkey:'org_nm',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'addressline1',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'addressline2',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'addressline3',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'city',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'state',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'province',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'postalcode',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'countrycode',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'created_dt',type:'timestamp',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_email', color:'--accent-coral', cat:'contact', x:80, y:620, sortkey:'person_id',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'unknown_email',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'work_email',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'primary_email',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'personal_email',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'created_dt',type:'timestamp',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_phn', color:'--accent-coral', cat:'contact', x:420, y:720, sortkey:'person_id',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'cellphone',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'homephone',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'workphone',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'primaryphone',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'telephone2',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'otherphone',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'unknownphone',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'created_dt',type:'varchar(19)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_emp', color:'--accent-gray', cat:'general', x:850, y:720, sortkey:'person_id',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'employee_id',type:'varchar(60)',pk:false,fk:false,dk:false},
+        {name:'term_dt',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'rehire_dt',type:'varchar(10)',pk:false,fk:false,dk:false},
+        {name:'employeeflag',type:'varchar(1)',pk:false,fk:false,dk:false},
+        {name:'worklocator',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'department',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'division',type:'varchar(255)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+    { id:'mbr_gen', color:'--accent-gray', cat:'general', x:1200, y:720, sortkey:'person_id',
+      columns:[
+        {name:'person_id',type:'varchar(50)',pk:false,fk:true,dk:true},
+        {name:'subscriber_id',type:'varchar(50)',pk:false,fk:false,dk:false},
+        {name:'org_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'rln_cd',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'emp_dep',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'relationship',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'relationshipcode',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'group_nm',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'partner_groupid',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'emp_type_code',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'subempid',type:'varchar(100)',pk:false,fk:false,dk:false},
+        {name:'loaddate',type:'timestamp',pk:false,fk:false,dk:false},
+      ]},
+  ],
+  relationships: [
+    {from:'mbr_unique_prs',to:'mbr_person',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_pi_memid',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_pi_dpid',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_ctrct_v3',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_covrg_v3',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_adr',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_email',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_phn',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_emp',col:'person_id',card:'1:N'},
+    {from:'mbr_unique_prs',to:'mbr_gen',col:'person_id',card:'1:N'},
+    {from:'mbr_ctrct_v3',to:'mbr_covrg_v3',col:'covrg_id',card:'1:N'},
+  ]
+};
+
+const world = document.getElementById('world');
+const svgConn = document.getElementById('svg-conn');
+const canvasEl = document.getElementById('canvas');
+const gridBg = document.getElementById('grid-bg');
+const cardEls = {};
+let scale = 0.75, panX = 50, panY = 50;
+let panning = false, pStartX, pStartY, panSX, panSY;
+let dragCard = null, dragOX, dragOY;
+let allOpen = false;
+
+// ── GRID BG ──
+function drawGrid() {
+  const c = gridBg, ctx = c.getContext('2d');
+  c.width = window.innerWidth * 2; c.height = window.innerHeight * 2;
+  c.style.width = window.innerWidth + 'px'; c.style.height = window.innerHeight + 'px';
+  ctx.scale(2, 2);
+  const gap = 30 * scale;
+  if (gap < 8) return;
+  ctx.fillStyle = '#1a1e28';
+  const ox = ((panX % (30 * scale)) + 30 * scale) % (30 * scale);
+  const oy = ((panY % (30 * scale)) + 30 * scale) % (30 * scale);
+  for (let x = ox; x < window.innerWidth; x += gap)
+    for (let y = oy; y < window.innerHeight; y += gap)
+      ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
+}
+
+// ── RENDER CARDS ──
+function renderCard(tbl) {
+  const el = document.createElement('div');
+  el.className = 'tbl';
+  el.dataset.id = tbl.id;
+  el.style.left = tbl.x + 'px';
+  el.style.top = tbl.y + 'px';
+  rebuildCardHTML(el, tbl);
+
+  // Drag
+  el.querySelector('.tbl-head').addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    dragCard = { el, tbl };
+    dragOX = e.clientX / scale - tbl.x;
+    dragOY = e.clientY / scale - tbl.y;
+    el.classList.add('dragging');
+  });
+
+  // Context menu
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    showCtxMenu(e.clientX, e.clientY, tbl, el);
+  });
+
+  world.appendChild(el);
+  cardEls[tbl.id] = el;
+}
+
+function rebuildCardHTML(el, tbl) {
+  const wasOpen = el.classList.contains('open');
+  const badges = (col) => {
+    let h = '';
+    if (col.pk) h += '<span class="badge badge-pk">pk</span>';
+    if (col.fk) h += '<span class="badge badge-fk">fk</span>';
+    if (col.dk) h += '<span class="badge badge-dk">dk</span>';
+    if (tbl.sortkey === col.name) h += '<span class="badge badge-sk">sk</span>';
+    return h;
+  };
+  el.innerHTML = `
+    <div class="tbl-head">
+      <div class="dot" style="background:var(${tbl.color})"></div>
+      <span class="name">${tbl.id}</span>
+      <span class="cnt">${tbl.columns.length}</span>
+      <div class="expand-chev" onclick="event.stopPropagation();this.closest('.tbl').classList.toggle('open');setTimeout(drawConnectors,320)">
+        <svg viewBox="0 0 12 12"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+    <div class="tbl-body">
+      ${tbl.columns.map((c,i) => `
+        <div class="col-row" data-ci="${i}">
+          <span class="c-name">${c.name}</span>
+          <span class="badges">${badges(c)}</span>
+          <span class="c-type">${c.type}</span>
+          <div class="col-actions">
+            <button class="col-act-btn move" title="Move up" onclick="event.stopPropagation();moveColumn('${tbl.id}',${i},-1)" ${i===0?'disabled style="opacity:.25;pointer-events:none"':''}>▲</button>
+            <button class="col-act-btn move" title="Move down" onclick="event.stopPropagation();moveColumn('${tbl.id}',${i},1)" ${i===tbl.columns.length-1?'disabled style="opacity:.25;pointer-events:none"':''}>▼</button>
+            <button class="col-act-btn" title="Edit" onclick="event.stopPropagation();editColumn('${tbl.id}',${i})">✎</button>
+            <button class="col-act-btn del" title="Delete" onclick="event.stopPropagation();deleteColumn('${tbl.id}',${i})">✕</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="tbl-foot">
+      <button class="tbl-foot-btn" onclick="event.stopPropagation();addColumn('${tbl.id}')">
+        <svg viewBox="0 0 12 12"><line x1="6" y1="2" x2="6" y2="10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Add column
+      </button>
+    </div>
+  `;
+  if (wasOpen) el.classList.add('open');
+
+  // Re-attach drag
+  el.querySelector('.tbl-head').addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    dragCard = { el, tbl };
+    dragOX = e.clientX / scale - tbl.x;
+    dragOY = e.clientY / scale - tbl.y;
+    el.classList.add('dragging');
+  });
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    showCtxMenu(e.clientX, e.clientY, tbl, el);
+  });
+}
+
+// ── CONNECTORS ──
+function getAnchor(el, side) {
+  const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
+  const w = el.offsetWidth, h = el.offsetHeight;
+  if (side === 'top') return {x:x+w/2, y};
+  if (side === 'bottom') return {x:x+w/2, y:y+h};
+  if (side === 'left') return {x, y:y+h/2};
+  return {x:x+w, y:y+h/2};
+}
+function bestSides(a, b) {
+  const ax = parseFloat(a.style.left)+a.offsetWidth/2, ay = parseFloat(a.style.top)+a.offsetHeight/2;
+  const bx = parseFloat(b.style.left)+b.offsetWidth/2, by = parseFloat(b.style.top)+b.offsetHeight/2;
+  const dx = bx-ax, dy = by-ay;
+  return Math.abs(dx)>Math.abs(dy)
+    ? [dx>0?'right':'left', dx>0?'left':'right']
+    : [dy>0?'bottom':'top', dy>0?'top':'bottom'];
+}
+
+function drawConnectors() {
+  svgConn.innerHTML = '';
+  MODEL.relationships.forEach(r => {
+    const fEl = cardEls[r.from], tEl = cardEls[r.to];
+    if (!fEl || !tEl) return;
+    const [fs, ts] = bestSides(fEl, tEl);
+    const a = getAnchor(fEl, fs), b = getAnchor(tEl, ts);
+    const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+    const d = (fs==='right'||fs==='left')
+      ? `M${a.x},${a.y}C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}`
+      : `M${a.x},${a.y}C${a.x},${my} ${b.x},${my} ${b.x},${b.y}`;
+    const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',d);
+    p.dataset.from=r.from; p.dataset.to=r.to;
+    svgConn.appendChild(p);
+    // endpoints
+    [a,b].forEach(pt=>{
+      const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',pt.x);c.setAttribute('cy',pt.y);c.setAttribute('r','3');
+      c.setAttribute('fill','var(--border)');c.dataset.from=r.from;c.dataset.to=r.to;
+      svgConn.appendChild(c);
+    });
+    // label
+    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.textContent=r.card;t.setAttribute('x',mx);t.setAttribute('y',my-7);
+    t.setAttribute('text-anchor','middle');t.dataset.from=r.from;t.dataset.to=r.to;
+    svgConn.appendChild(t);
+  });
+}
+
+// ── HIGHLIGHT ──
+function hlTable(id) {
+  cardEls[id]?.classList.add('hl');
+  svgConn.querySelectorAll(`[data-from="${id}"],[data-to="${id}"]`).forEach(e=>e.classList.add('hl'));
+}
+function clearHL() {
+  document.querySelectorAll('.hl').forEach(e=>e.classList.remove('hl'));
+}
+
+// ── MODALS ──
+function showModal(html) {
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.innerHTML = `<div class="modal">${html}</div>`;
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+  const first = ov.querySelector('input,select');
+  if (first) setTimeout(()=>first.focus(), 50);
+  return ov;
+}
+function closeModal(el) { el.closest('.modal-overlay')?.remove(); }
+
+function addColumn(tblId) {
+  const tbl = MODEL.tables.find(t=>t.id===tblId);
+  const ov = showModal(`
+    <h3>Add column to ${tblId}</h3>
+    <label>Column name</label>
+    <input id="mc-name" placeholder="new_column">
+    <label>Data type</label>
+    <input id="mc-type" value="varchar(100)" placeholder="varchar(100)">
+    <div class="checkbox-row"><input type="checkbox" id="mc-pk"><label for="mc-pk">Primary key</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="mc-fk"><label for="mc-fk">Foreign key</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="mc-dk"><label for="mc-dk">Distribution key</label></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal(this)">Cancel</button>
+      <button class="btn btn-primary" onclick="doAddColumn('${tblId}',this)">Add</button>
+    </div>
+  `);
+  ov.querySelector('#mc-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') ov.querySelector('.btn-primary').click();
+  });
+}
+function doAddColumn(tblId, btn) {
+  const tbl = MODEL.tables.find(t=>t.id===tblId);
+  const name = document.getElementById('mc-name').value.trim();
+  if (!name) return toast('Column name is required');
+  if (tbl.columns.find(c=>c.name===name)) return toast('Column already exists');
+  tbl.columns.push({
+    name,
+    type: document.getElementById('mc-type').value.trim() || 'varchar(100)',
+    pk: document.getElementById('mc-pk').checked,
+    fk: document.getElementById('mc-fk').checked,
+    dk: document.getElementById('mc-dk').checked,
+  });
+  rebuildCardHTML(cardEls[tblId], tbl);
+  closeModal(btn);
+  setTimeout(drawConnectors, 50);
+  toast(`Added ${name} to ${tblId}`);
+}
+
+function editColumn(tblId, ci) {
+  const tbl = MODEL.tables.find(t=>t.id===tblId);
+  const col = tbl.columns[ci];
+  const ov = showModal(`
+    <h3>Edit column</h3>
+    <label>Column name</label>
+    <input id="ec-name" value="${col.name}">
+    <label>Data type</label>
+    <input id="ec-type" value="${col.type}">
+    <div class="checkbox-row"><input type="checkbox" id="ec-pk" ${col.pk?'checked':''}><label for="ec-pk">Primary key</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="ec-fk" ${col.fk?'checked':''}><label for="ec-fk">Foreign key</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="ec-dk" ${col.dk?'checked':''}><label for="ec-dk">Distribution key</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="ec-sk" ${tbl.sortkey===col.name?'checked':''}><label for="ec-sk">Sort key</label></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal(this)">Cancel</button>
+      <button class="btn btn-primary" onclick="doEditColumn('${tblId}',${ci},this)">Save</button>
+    </div>
+  `);
+}
+function doEditColumn(tblId, ci, btn) {
+  const tbl = MODEL.tables.find(t=>t.id===tblId);
+  const col = tbl.columns[ci];
+  const oldName = col.name;
+  col.name = document.getElementById('ec-name').value.trim() || col.name;
+  col.type = document.getElementById('ec-type').value.trim() || col.type;
+  col.pk = document.getElementById('ec-pk').checked;
+  col.fk = document.getElementById('ec-fk').checked;
+  col.dk = document.getElementById('ec-dk').checked;
+  if (document.getElementById('ec-sk').checked) tbl.sortkey = col.name;
+  else if (tbl.sortkey === oldName) tbl.sortkey = null;
+  rebuildCardHTML(cardEls[tblId], tbl);
+  closeModal(btn);
+  setTimeout(drawConnectors, 50);
+  toast(`Updated ${col.name}`);
+}
+
+function deleteColumn(tblId, ci) {
+  const tbl = MODEL.tables.find(t=>t.id===tblId);
+  const col = tbl.columns[ci];
+  const ov = showModal(`
+    <h3>Delete column?</h3>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:8px;">Remove <strong style="color:var(--text)">${col.name}</strong> from ${tblId}?</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal(this)">Cancel</button>
+      <button class="btn btn-danger" onclick="doDeleteColumn('${tblId}',${ci},this)">Delete</button>
+    </div>
+  `);
+}
+function doDeleteColumn(tblId, ci, btn) {
+  const tbl = MODEL.tables.find(t=>t.id===tblId);
+  const name = tbl.columns[ci].name;
+  if (tbl.sortkey === name) tbl.sortkey = null;
+  tbl.columns.splice(ci, 1);
+  rebuildCardHTML(cardEls[tblId], tbl);
+  closeModal(btn);
+  setTimeout(drawConnectors, 50);
+  toast(`Removed ${name}`);
+}
+
+function moveColumn(tblId, ci, dir) {
+  const tbl = MODEL.tables.find(t=>t.id===tblId);
+  const ni = ci + dir;
+  if (ni < 0 || ni >= tbl.columns.length) return;
+  const tmp = tbl.columns[ci];
+  tbl.columns[ci] = tbl.columns[ni];
+  tbl.columns[ni] = tmp;
+  rebuildCardHTML(cardEls[tblId], tbl);
+  setTimeout(drawConnectors, 50);
+  toast(`Moved ${tmp.name} ${dir < 0 ? 'up' : 'down'}`);
+}
+
+// ── CONTEXT MENU ──
+let ctxMenu = null;
+function showCtxMenu(mx, my, tbl, el) {
+  hideCtxMenu();
+  ctxMenu = document.createElement('div');
+  ctxMenu.className = 'ctx-menu';
+  ctxMenu.style.left = mx+'px'; ctxMenu.style.top = my+'px';
+  ctxMenu.innerHTML = `
+    <div class="ctx-item" onclick="addColumn('${tbl.id}');hideCtxMenu()">Add column</div>
+    <div class="ctx-item" onclick="toggleSingleCard('${tbl.id}');hideCtxMenu()">${el.classList.contains('open')?'Collapse':'Expand'} columns</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" onclick="duplicateTable('${tbl.id}');hideCtxMenu()">Duplicate table</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" onclick="deleteTable('${tbl.id}');hideCtxMenu()">Delete table</div>
+  `;
+  document.body.appendChild(ctxMenu);
+  // keep on screen
+  const r = ctxMenu.getBoundingClientRect();
+  if (r.right > window.innerWidth) ctxMenu.style.left = (mx - r.width)+'px';
+  if (r.bottom > window.innerHeight) ctxMenu.style.top = (my - r.height)+'px';
+}
+function hideCtxMenu() { if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; } }
+document.addEventListener('click', hideCtxMenu);
+
+function toggleSingleCard(id) {
+  cardEls[id].classList.toggle('open');
+  setTimeout(drawConnectors, 320);
+}
+function duplicateTable(id) {
+  const src = MODEL.tables.find(t=>t.id===id);
+  const newId = src.id + '_copy';
+  const dup = JSON.parse(JSON.stringify(src));
+  dup.id = newId; dup.x += 40; dup.y += 40;
+  MODEL.tables.push(dup);
+  renderCard(dup);
+  setTimeout(drawConnectors, 50);
+  toast(`Duplicated ${id}`);
+}
+function deleteTable(id) {
+  const ov = showModal(`
+    <h3>Delete table?</h3>
+    <p style="font-size:13px;color:var(--text-muted);margin-top:8px;">Remove <strong style="color:var(--text)">${id}</strong> and all its relationships?</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal(this)">Cancel</button>
+      <button class="btn btn-danger" onclick="doDeleteTable('${id}',this)">Delete</button>
+    </div>
+  `);
+}
+function doDeleteTable(id, btn) {
+  MODEL.tables = MODEL.tables.filter(t=>t.id!==id);
+  MODEL.relationships = MODEL.relationships.filter(r=>r.from!==id&&r.to!==id);
+  cardEls[id]?.remove();
+  delete cardEls[id];
+  closeModal(btn);
+  drawConnectors();
+  toast(`Deleted ${id}`);
+}
+
+// ── PAN / ZOOM ──
+function applyTransform() {
+  world.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
+  drawGrid();
+  drawMinimap();
+}
+canvasEl.addEventListener('mousedown', e => {
+  if (e.target.closest('.tbl') || e.target.closest('.ctx-menu')) return;
+  if (e.button !== 0) return;
+  panning = true; pStartX = e.clientX; pStartY = e.clientY;
+  panSX = panX; panSY = panY;
+  canvasEl.classList.add('panning');
+});
+window.addEventListener('mousemove', e => {
+  if (dragCard) {
+    const nx = e.clientX/scale - dragOX - panX/scale;
+    const ny = e.clientY/scale - dragOY - panY/scale;
+    dragCard.tbl.x = Math.round(nx/10)*10;
+    dragCard.tbl.y = Math.round(ny/10)*10;
+    dragCard.el.style.left = dragCard.tbl.x+'px';
+    dragCard.el.style.top = dragCard.tbl.y+'px';
+    drawConnectors();
+    drawMinimap();
+    return;
+  }
+  if (!panning) return;
+  panX = panSX + (e.clientX - pStartX);
+  panY = panSY + (e.clientY - pStartY);
+  applyTransform();
+});
+window.addEventListener('mouseup', () => {
+  if (dragCard) { dragCard.el.classList.remove('dragging'); dragCard = null; }
+  panning = false;
+  canvasEl.classList.remove('panning');
+});
+canvasEl.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1.08 : 0.93;
+  const r = canvasEl.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  panX = mx - (mx - panX)*f;
+  panY = my - (my - panY)*f;
+  scale = Math.max(0.15, Math.min(3, scale*f));
+  applyTransform();
+  drawConnectors();
+}, {passive:false});
+
+function zoomBy(f) {
+  const cx = canvasEl.clientWidth/2, cy = canvasEl.clientHeight/2;
+  panX = cx-(cx-panX)*f; panY = cy-(cy-panY)*f;
+  scale = Math.max(0.15,Math.min(3,scale*f));
+  applyTransform(); drawConnectors();
+}
+function resetView() {
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  MODEL.tables.forEach(t=>{minX=Math.min(minX,t.x);minY=Math.min(minY,t.y);maxX=Math.max(maxX,t.x+280);maxY=Math.max(maxY,t.y+60);});
+  const pad=80,cw=canvasEl.clientWidth,ch=canvasEl.clientHeight;
+  scale=Math.min(cw/(maxX-minX+pad*2),ch/(maxY-minY+pad*2),1.2);
+  panX=cw/2-(minX+(maxX-minX)/2)*scale;
+  panY=ch/2-(minY+(maxY-minY)/2)*scale;
+  applyTransform(); drawConnectors();
+}
+function toggleAllCards() {
+  allOpen=!allOpen;
+  Object.values(cardEls).forEach(c=>{if(allOpen)c.classList.add('open');else c.classList.remove('open');});
+  setTimeout(drawConnectors, 320);
+}
+
+// ── MINIMAP ──
+const miniC = document.getElementById('minicanvas');
+const mctx = miniC.getContext('2d');
+function drawMinimap() {
+  const W=170,H=110;
+  miniC.width=W*2;miniC.height=H*2;miniC.style.width=W+'px';miniC.style.height=H+'px';
+  mctx.scale(2,2);mctx.clearRect(0,0,W,H);
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  MODEL.tables.forEach(t=>{minX=Math.min(minX,t.x);minY=Math.min(minY,t.y);maxX=Math.max(maxX,t.x+270);maxY=Math.max(maxY,t.y+60);});
+  const pad=50;minX-=pad;minY-=pad;maxX+=pad;maxY+=pad;
+  const sx=W/(maxX-minX),sy=H/(maxY-minY),s=Math.min(sx,sy);
+  mctx.strokeStyle='#252a35';mctx.lineWidth=.5;
+  MODEL.relationships.forEach(r=>{
+    const f=MODEL.tables.find(t=>t.id===r.from),tt=MODEL.tables.find(t=>t.id===r.to);
+    if(!f||!tt)return;
+    mctx.beginPath();mctx.moveTo((f.x+135-minX)*s,(f.y+20-minY)*s);
+    mctx.lineTo((tt.x+135-minX)*s,(tt.y+20-minY)*s);mctx.stroke();
+  });
+  MODEL.tables.forEach(t=>{
+    const col=getComputedStyle(document.documentElement).getPropertyValue(t.color).trim();
+    mctx.fillStyle=col||'#5b9aff';
+    mctx.fillRect((t.x-minX)*s,(t.y-minY)*s,Math.max(5,270*s),Math.max(3,30*s));
+  });
+  mctx.strokeStyle='#5b9aff';mctx.lineWidth=1;
+  const vl=-panX/scale,vt=-panY/scale,vw=canvasEl.clientWidth/scale,vh=canvasEl.clientHeight/scale;
+  mctx.strokeRect((vl-minX)*s,(vt-minY)*s,vw*s,vh*s);
+}
+
+// ── EXPORT ──
+function exportJSON() {
+  const data = JSON.stringify(MODEL, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'MBR_Data_Model.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Exported MBR_Data_Model.json');
+}
+
+// ── TOAST ──
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),200);},2000);
+}
+
+// ── INIT ──
+MODEL.tables.forEach(renderCard);
+requestAnimationFrame(()=>{
+  drawConnectors();
+  applyTransform();
+  // Auto-fit on load
+  setTimeout(resetView, 100);
+});
+window.addEventListener('resize',()=>{drawGrid();drawConnectors();drawMinimap();});
+
+// Hover highlight on headers
+document.addEventListener('mouseenter', e => {
+  const head = e.target.closest?.('.tbl-head');
+  if (head) hlTable(head.closest('.tbl').dataset.id);
+}, true);
+document.addEventListener('mouseleave', e => {
+  const head = e.target.closest?.('.tbl-head');
+  if (head) clearHL();
+}, true);
+</script>
+</body>
+</html>
